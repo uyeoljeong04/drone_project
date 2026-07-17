@@ -61,8 +61,9 @@
             </clip>
           </camera>
           <plugin name="drone_camera_controller" filename="libgazebo_ros_camera.so">
-            <!-- camera_name=camera → 토픽: /camera/image_raw, /camera/camera_info -->
-            <camera_name>camera</camera_name>
+            <!-- camera_name=drone → /drone/image_raw, /drone/camera_info
+                 (waffle 자체 온보드 카메라가 /camera/* 를 쓰므로 충돌 방지 위해 분리) -->
+            <camera_name>drone</camera_name>
             <!-- 헤더 frame_id. 실제 TF(world→drone_camera_optical)는
                  런치 파일의 static_transform_publisher 가 발행 -->
             <frame_name>drone_camera_optical</frame_name>

@@ -137,7 +137,7 @@ class ObstacleLocatorNode(Node):
 
         # ── 카메라 K: camera_info 수신 전엔 하드코딩 값으로 시작 ──
         self.K = K_SIM.copy()
-        self.create_subscription(CameraInfo, "/camera/camera_info", self.on_camera_info, 10)
+        self.create_subscription(CameraInfo, "/drone/camera_info", self.on_camera_info, 10)
 
         # ── 탐지 픽셀 입력 (4주차에서 실제 탐지기 출력으로 교체될 자리) ──
         self.create_subscription(Point, "/detection/pixel", self.on_detection_pixel, 10)

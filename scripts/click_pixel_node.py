@@ -32,7 +32,7 @@ class ClickPixelNode(Node):
         self.bridge = CvBridge()
         self.last_click = None  # (u, v) 마지막 클릭 위치
 
-        self.create_subscription(Image, "/camera/image_raw", self.on_image, 10)
+        self.create_subscription(Image, "/drone/image_raw", self.on_image, 10)
         self.pub_pixel = self.create_publisher(Point, "/detection/pixel", 10)
 
         cv2.namedWindow(WINDOW)
