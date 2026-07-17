@@ -1,0 +1,161 @@
+<?xml version="1.0" ?>
+<!--
+  spartina_world.world (파트2·3 통합 수정본)
+  기반: 여수환 drone_project-main/worlds/spartina_world.world
+  변경점:
+    1. 드론 카메라 추가 — 상공 5m에서 수직 하방 (pose: 0 0 5 0 1.5708 0)
+       → /camera/image_raw, /camera/camera_info 자동 발행 (gazebo_ros_camera)
+       → 2번 파트 Week2/3 검증 조건과 동일한 pose/K (fx≈554.3)
+    2. target_spartina 위치 (5,0) → (2,0) 로 이동
+       ※ 이유: 5m 고도 + HFOV 60° 카메라의 지면 시야가 약 ±2.9m라
+         (5,0)은 화면 밖. (2,0)은 화면 안 + Week2 검증 지점과 동일.
+  사용법: ~/drone_project/worlds/spartina_world.world 를 이 파일로 교체
+-->
+<sdf version="1.6">
+  <world name="spartina_world">
+
+    <!-- 조명 (햇빛) -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- 바닥 -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- ═══════════════════════════════════════════════════════
+         드론 카메라 (신규): 원점 상공 5m, 똑바로 아래를 봄
+         2번 파트 obstacle_locator_node 의 입력 소스
+         ═══════════════════════════════════════════════════════ -->
+    <model name="drone_camera">
+      <static>true</static>
+      <pose>0 0 5 0 1.5708 0</pose>
+      <link name="camera_link">
+        <!-- 드론 위치를 눈으로 확인하기 위한 작은 파란 박스 -->
+        <visual name="visual">
+          <geometry>
+            <box><size>0.2 0.2 0.1</size></box>
+          </geometry>
+          <material>
+            <ambient>0.1 0.1 0.8 1</ambient>
+            <diffuse>0.1 0.1 0.9 1</diffuse>
+          </material>
+        </visual>
+        <sensor type="camera" name="drone_camera_sensor">
+          <update_rate>10</update_rate>
+          <always_on>true</always_on>
+          <camera>
+            <!-- HFOV 1.047rad(60°) + 640px → fx = 320/tan(30°) ≈ 554.3
+                 (2번 파트가 검증에 쓴 K_SIM 값과 일치) -->
+            <horizontal_fov>1.047</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>100</far>
+            </clip>
+          </camera>
+          <plugin name="drone_camera_controller" filename="libgazebo_ros_camera.so">
+            <!-- camera_name=camera → 토픽: /camera/image_raw, /camera/camera_info -->
+            <camera_name>camera</camera_name>
+            <!-- 헤더 frame_id. 실제 TF(world→drone_camera_optical)는
+                 런치 파일의 static_transform_publisher 가 발행 -->
+            <frame_name>drone_camera_optical</frame_name>
+          </plugin>
+        </sensor>
+      </link>
+    </model>
+
+    <!-- 목표 지점: 빨간 원기둥 (갯끈풀) — (5,0)→(2,0) 이동 -->
+    <!-- collision 없음(시각 전용) → 로봇이 도착해서 겹쳐도 충돌 안 함 -->
+    <model name="target_spartina">
+      <static>true</static>
+      <pose>2 0 0.5 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.3</radius>
+              <length>1.0</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.8 0.1 0.1 1</ambient>
+            <diffuse>0.9 0.1 0.1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 장애물 1 -->
+    <model name="obstacle_1">
+      <static>true</static>
+      <pose>2 1 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 장애물 2 -->
+    <model name="obstacle_2">
+      <static>true</static>
+      <pose>3 -1.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 장애물 3 -->
+    <model name="obstacle_3">
+      <static>true</static>
+      <pose>3.5 1.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
