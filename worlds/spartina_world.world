@@ -91,10 +91,10 @@
       </link>
     </model>
 
-    <!-- 장애물 1 -->
+    <!-- 장애물 1 : 로봇(-2,0)→목표(2,0) 경로 한가운데. 회피 시연용 -->
     <model name="obstacle_1">
       <static>true</static>
-      <pose>2 1 0.5 0 0 0</pose>
+      <pose>0 0 0.5 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
