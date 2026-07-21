@@ -1,0 +1,197 @@
+<?xml version="1.0" ?>
+<!--
+  spartina_world_moving.world (드론 이동 버전 — 기존 spartina_world.world 는 그대로 둠)
+  기반: 여수환 drone_project-main/worlds/spartina_world.world
+  변경점:
+    1. 드론 카메라 추가 — 상공 5m에서 수직 하방 (pose: 0 0 5 0 1.5708 0)
+       → /camera/image_raw, /camera/camera_info 자동 발행 (gazebo_ros_camera)
+       → 2번 파트 Week2/3 검증 조건과 동일한 pose/K (fx≈554.3)
+    2. target_spartina 위치 (5,0) → (2,0) 로 이동
+       ※ 이유: 5m 고도 + HFOV 60° 카메라의 지면 시야가 약 ±2.9m라
+         (5,0)은 화면 밖. (2,0)은 화면 안 + Week2 검증 지점과 동일.
+  사용법: ~/drone_project/worlds/spartina_world.world 를 이 파일로 교체
+-->
+<sdf version="1.6">
+  <world name="spartina_world">
+
+    <!-- 조명 (햇빛) -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- 바닥 -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- ═══════════════════════════════════════════════════════
+         드론 카메라 (신규): 원점 상공 5m, 똑바로 아래를 봄
+         2번 파트 obstacle_locator_node 의 입력 소스
+         ═══════════════════════════════════════════════════════ -->
+    <model name="drone_camera">
+      <!-- [이동버전] static=false + kinematic=true
+           static 모델은 SetEntityState 로 옮겨도 pose 가 갱신되지 않는 경우가 있다.
+           kinematic 은 중력/충돌力을 안 받으면서 SetWorldPose 로는 확실히 움직인다. -->
+      <static>false</static>
+      <!-- 높이 8m: 목표(2,0)까지 화면에 들어오도록 (5m는 x±1.6m라 기둥이 프레임 밖) -->
+      <pose>0 0 8 0 1.5708 0</pose>
+      <link name="camera_link">
+        <kinematic>true</kinematic>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.1</mass>
+          <inertia><ixx>1e-4</ixx><iyy>1e-4</iyy><izz>1e-4</izz>
+                   <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+        </inertial>
+        <!-- 드론 위치를 눈으로 확인하기 위한 작은 파란 박스 -->
+        <visual name="visual">
+          <geometry>
+            <box><size>0.2 0.2 0.1</size></box>
+          </geometry>
+          <material>
+            <ambient>0.1 0.1 0.8 1</ambient>
+            <diffuse>0.1 0.1 0.9 1</diffuse>
+          </material>
+        </visual>
+        <sensor type="camera" name="drone_camera_sensor">
+          <update_rate>10</update_rate>
+          <always_on>true</always_on>
+          <camera>
+            <!-- HFOV 1.047rad(60°) + 640px → fx = 320/tan(30°) ≈ 554.3
+                 (2번 파트가 검증에 쓴 K_SIM 값과 일치) -->
+            <horizontal_fov>1.047</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>100</far>
+            </clip>
+          </camera>
+          <plugin name="drone_camera_controller" filename="libgazebo_ros_camera.so">
+            <!-- camera_name=drone → /drone/image_raw, /drone/camera_info
+                 (waffle 자체 온보드 카메라가 /camera/* 를 쓰므로 충돌 방지 위해 분리) -->
+            <camera_name>drone</camera_name>
+            <!-- 헤더 frame_id. 실제 TF(world→drone_camera_optical)는
+                 런치 파일의 static_transform_publisher 가 발행 -->
+            <frame_name>drone_camera_optical</frame_name>
+          </plugin>
+        </sensor>
+      </link>
+    </model>
+
+    <!-- 목표 지점: 빨간 원기둥 (갯끈풀) — (5,0)→(2,0) 이동 -->
+    <!-- collision 추가 → 라이다가 실제 장애물로 인식, 로봇이 통과 못 하고 앞에서 멈춤 -->
+    <model name="target_spartina">
+      <static>true</static>
+      <pose>2 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.3</radius>
+              <length>1.0</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.3</radius>
+              <length>1.0</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.8 0.1 0.1 1</ambient>
+            <diffuse>0.9 0.1 0.1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 장애물 1 : 로봇(-2,0)→목표(2,0) 경로 한가운데. 회피 시연용 -->
+    <model name="obstacle_1">
+      <static>true</static>
+      <pose>0 0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 장애물 2 -->
+    <model name="obstacle_2">
+      <static>true</static>
+      <pose>3 -1.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 장애물 3 -->
+    <model name="obstacle_3">
+      <static>true</static>
+      <pose>3.5 1.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.8 0.8 1.0</size></box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ═══════════════════════════════════════════════════════
+         [이동버전 신규] gazebo_ros_state 플러그인
+         제공하는 것:
+           토픽   /gazebo/model_states       (모든 모델의 실시간 pose)
+                  → drone_tf_broadcaster.py 가 구독
+           서비스 /gazebo/set_entity_state   (모델을 원하는 pose 로 이동)
+                  → drone_survey_node.py 가 호출
+         ※ 이 플러그인이 없으면 위 토픽·서비스가 아예 안 생긴다.
+         ═══════════════════════════════════════════════════════ -->
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>50.0</update_rate>
+    </plugin>
+
+  </world>
+</sdf>
