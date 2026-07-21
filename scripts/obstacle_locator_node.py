@@ -97,12 +97,16 @@ def quaternion_to_matrix(qx, qy, qz, qw):
     ])
 
 
-# ── 검증용 하드코딩 값 (2주차 validate_projection.py 와 동일) ──────────
-# world 파일 카메라 pose: 0 0 5  0 1.5708 0  (원점 위 5m, 똑바로 아래)
+# ── 검증용 하드코딩 값 ──────────────────────────────────────────────
+# ※ use_tf2:=false 일 때만 쓰인다. use_tf2:=true 에서는 더 이상 폴백으로
+#   쓰이지 않는다 (_lookup_pose 주석 참고).
+# ※ 고도 5.0 → 8.0 수정 (Week5):
+#   world 의 카메라가 5m → 8m 로 바뀌었는데 이 상수만 5.0 으로 남아 있었다.
+#   Week2 검증 결과(5m 기준)를 재현하려면 이 값을 5.0 으로 되돌릴 것.
 K_SIM = np.array([[554.38,   0.0, 320.5],
                    [  0.0, 554.38, 240.5],
                    [  0.0,   0.0,   1.0]])
-C_HARDCODED = np.array([0.0, 0.0, 5.0])
+C_HARDCODED = np.array([0.0, 0.0, 8.0])
 R_HARDCODED = np.array([[ 0.0, -1.0,  0.0],
                          [-1.0,  0.0,  0.0],
                          [ 0.0,  0.0, -1.0]])
@@ -177,7 +181,19 @@ class ObstacleLocatorNode(Node):
         self.get_logger().info(f"/detection/pixel 수신 → 픽셀({msg.x:.1f}, {msg.y:.1f})")
 
     def _lookup_pose(self, frame_id, fallback_R, fallback_C, label):
-        """world_frame → frame_id TF를 조회해 (R, C)를 반환. 실패 시 폴백 + 경고."""
+        """
+        world_frame → frame_id TF를 조회해 (R, C)를 반환.
+
+        use_tf2:=false  → 하드코딩 값 사용 (Week2~3 검증 모드)
+        use_tf2:=true   → TF 조회. 실패하면 None 을 반환한다.
+
+        ※ Week5 변경: 예전에는 TF 조회에 실패하면 하드코딩 값으로 폴백했다.
+          드론이 고정이던 시절엔 그 상수가 우연히 맞았지만, 드론이 움직이는
+          지금은 어떤 상수를 넣어도 틀린 값이다. 그런데 계산은 계속 성공하고
+          로봇도 정상적으로 움직여서, 조용히 엉뚱한 곳으로 가는
+          '가장 찾기 어려운 종류의 버그'가 된다.
+          → 폴백을 없애고 그 주기를 건너뛴다. 출력이 멈추면 즉시 알아챌 수 있다.
+        """
         if not self.use_tf2:
             return fallback_R, fallback_C
 
@@ -186,8 +202,12 @@ class ObstacleLocatorNode(Node):
                 self.world_frame, frame_id, rclpy.time.Time()
             )
         except Exception as e:
-            self.get_logger().warn(f"{label} tf2 조회 실패({frame_id}) → 폴백 ({e})")
-            return fallback_R, fallback_C
+            self.get_logger().error(
+                f"{label} TF 조회 실패 ({self.world_frame} → {frame_id}): {e}\n"
+                f"  → 틀린 좌표를 내지 않기 위해 이번 주기 계산을 건너뜁니다.",
+                throttle_duration_sec=2.0,
+            )
+            return None
 
         t = tf.transform.translation
         q = tf.transform.rotation
@@ -203,7 +223,11 @@ class ObstacleLocatorNode(Node):
 
     def on_timer(self):
         u, v = self.current_pixel
-        R_cam, C_cam = self.get_camera_R_C()
+
+        cam = self.get_camera_R_C()
+        if cam is None:
+            return          # 카메라 TF 없음 → 계산 생략 (위 _lookup_pose 주석 참고)
+        R_cam, C_cam = cam
 
         # 1) 픽셀 → world 기준 지면좌표 (드론 기준 거리/방위각)
         try:
@@ -228,7 +252,11 @@ class ObstacleLocatorNode(Node):
 
         # 2) world 기준 P를 로봇 pose(R_robot, C_robot) 기준으로 재투영
         #    = 드론이 본 좌표를 "로봇 입장의 몇 m, 몇 도"로 변환하는 이번 주 핵심 단계
-        R_robot, C_robot = self.get_robot_R_C()
+        rob = self.get_robot_R_C()
+        if rob is None:
+            return          # 로봇 TF 없음 → 상대좌표를 낼 수 없으므로 생략
+        R_robot, C_robot = rob
+
         P_rel = R_robot.T @ (P - C_robot)   # 로봇 기준 상대좌표 (x=전방, y=좌측 등은 R_robot 정의에 따름)
         rel_distance = float(np.hypot(P_rel[0], P_rel[1]))
         rel_bearing_deg = float(np.degrees(np.arctan2(P_rel[1], P_rel[0])))
