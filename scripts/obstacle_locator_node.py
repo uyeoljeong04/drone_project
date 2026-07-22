@@ -145,6 +145,9 @@ class ObstacleLocatorNode(Node):
         #   false        : '지금'의 최신 TF 로 투영  ← Phase3 이전의 동작
         # 수정 전/후 오차를 비교 측정할 때 이 파라미터만 바꾸면 된다.
         self.declare_parameter("use_detection_stamp", True)
+        # 탐지 영상 시각이 최신 TF보다 살짝 앞설 때 TF 도착을 기다리는 시간 [s].
+        # 카메라 10Hz·TF 30Hz 기준 100ms 면 충분하다.
+        self.declare_parameter("lookup_timeout", 0.1)
 
         self.use_tf2 = bool(self.get_parameter("use_tf2").value)
         self.camera_frame = self.get_parameter("camera_frame").value
@@ -152,6 +155,7 @@ class ObstacleLocatorNode(Node):
         self.world_frame = self.get_parameter("world_frame").value
         rate_hz = float(self.get_parameter("rate_hz").value)
         self.use_detection_stamp = bool(self.get_parameter("use_detection_stamp").value)
+        self.lookup_timeout = float(self.get_parameter("lookup_timeout").value)
 
         # ── [Week5/Phase3] 탐지는 '상태'가 아니라 '사건' ──
         #   pending : 아직 투영하지 못한 탐지 (u, v, stamp, 접수시각)
@@ -279,17 +283,32 @@ class ObstacleLocatorNode(Node):
         if not self.use_tf2:
             return fallback_R, fallback_C
 
+        query = stamp if stamp is not None else rclpy.time.Time()
+
+        # 카메라(10Hz)와 TF(30Hz)가 서로 다른 속도로 들어와, 탐지 영상의 시각이
+        # 최신 TF보다 몇 ms 앞설 때가 있다("extrapolation into the future").
+        # 이럴 땐 아주 잠깐(기본 100ms) 기다리면 TF가 곧 도착하므로 timeout 을 준다.
+        # (TransformListener 가 백그라운드 스레드에서 돌기 때문에 대기가 동작한다.)
+        timeout = rclpy.duration.Duration(seconds=self.lookup_timeout)
+
         try:
             tf = self.tf_buffer.lookup_transform(
-                self.world_frame, frame_id,
-                stamp if stamp is not None else rclpy.time.Time(),
+                self.world_frame, frame_id, query, timeout=timeout
             )
         except Exception as e:
-            self.get_logger().error(
-                f"{label} TF 조회 실패 ({self.world_frame} → {frame_id}): {e}\n"
-                f"  → 틀린 좌표를 내지 않기 위해 이번 주기 계산을 건너뜁니다.",
-                throttle_duration_sec=2.0,
-            )
+            emsg = str(e)
+            # "미래로의 외삽"은 곧 해소되는 일시적 상황 → 조용히 이번만 건너뛰고
+            # _project_pending 이 다음 주기에 재시도한다. (빨간 ERROR 로 도배 방지)
+            if "future" in emsg or "extrapolation" in emsg.lower():
+                self.get_logger().debug(
+                    f"{label} TF 아직 안 옴(미래 요청) → 다음 주기 재시도"
+                )
+            else:
+                self.get_logger().error(
+                    f"{label} TF 조회 실패 ({self.world_frame} → {frame_id}): {emsg}\n"
+                    f"  → 틀린 좌표를 내지 않기 위해 이번 주기 계산을 건너뜁니다.",
+                    throttle_duration_sec=2.0,
+                )
             return None
 
         t = tf.transform.translation
